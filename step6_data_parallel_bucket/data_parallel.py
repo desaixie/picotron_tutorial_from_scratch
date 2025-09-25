@@ -1,259 +1,124 @@
 import contextlib
 from typing import List
+
 import torch
 import torch.distributed as dist
 from torch import nn
 
 import process_group_manager as pgm
 
-### begin Data Parallel (naive)
+
 class DataParallelNaive(nn.Module):
-    # Shouldn't be use with gradient accumulation (because it will accumulates gradient in bfloat16 and not float32)
+    """Reference data-parallel wrapper that synchronizes gradients via naive all-reduce hooks."""
+
     def __init__(self, module):
+        """Wrap the module and register gradient hooks for naive data parallelism."""
         super().__init__()
-        self.module = module
-        # whether to synchronize gradients during backward pass. Set to False when using gradient accumulation
-        self.require_backward_grad_sync = True
-        self.register_backward_hook(self._allreduce_grads)
-    
+        raise NotImplementedError("Store the wrapped module and set up gradient synchronization hooks.")
+
     def forward(self, *inputs, **kwargs):
-        return self.module(*inputs, **kwargs)
-    
+        """Delegate the forward pass to the wrapped module."""
+        raise NotImplementedError("Forward inputs to the underlying module.")
+
     def register_backward_hook(self, hook):
-        """Registers a backward hook for all parameters of the model that require gradients.""" 
-        for p in self.module.parameters():
-            if p.requires_grad is True:
-                p.register_hook(hook)
-                
+        """Attach the provided hook to every parameter needing gradients."""
+        raise NotImplementedError("Iterate parameters and register the synchronization hook where required.")
+
     def _allreduce_grads(self, grad):
-        """Performs an all-reduce operation to synchronize gradients across multiple processes."""
-        # No synchronization needed during gradient accumulation, except at the final accumulation step.
-        if self.require_backward_grad_sync:
-            dist.all_reduce(grad, op=dist.ReduceOp.SUM, group=pgm.process_group_manager.dp_group)
-            grad /= pgm.process_group_manager.dp_world_size
-        return grad
+        """Synchronize gradients with an all-reduce when gradient sync is enabled."""
+        raise NotImplementedError("All-reduce and average gradients across the data-parallel group.")
 
-### end Data Parallel (naive)
 
-### begin Data Parallel (bucket)
 class Bucket:
+    """Container that batches gradients for asynchronous all-reduce across data-parallel ranks."""
+
     def __init__(self, params: List[torch.nn.Parameter], grad_data: torch.Tensor, process_group: torch.distributed.ProcessGroup) -> None:
-        # Set of parameters in this bucket.
-        self.params = set(params)
-        # Parameters that have their gradients ready for synchronization. launch all reduce when all parameters have gradients ready
-        self.params_with_grad_ready = set()
-        # Parameters that have their gradients ready for synchronization. launch all reduce when all parameters have gradients ready
-        self.grad_data = grad_data
-        # Process group for gradient synchronization.
-        self.process_group = process_group
-        self.process_group_size = dist.get_world_size(group=self.process_group) 
-        # Handle for the async allreduce operation.
-        self.handle = None
-        
-        self.reset()
-    
+        """Track parameters, allocated gradient storage, and the async all-reduce handle."""
+        raise NotImplementedError("Store bucket membership, allocate gradient tensor, and reset synchronization state.")
+
     def sync_gradient(self) -> None:
-        """Launch an asynchronous all-reduce operation to synchronize gradients across processes."""
-        assert self.handle is None
-        self.grad_data /= self.process_group_size
-        self.handle = dist.all_reduce(self.grad_data, group=self.process_group, async_op=True)
-    
+        """Launch an asynchronous all-reduce for the bucket's gradient buffer."""
+        raise NotImplementedError("Average gradients and kick off the async all-reduce across the DP group.")
+
     def reset(self) -> None:
-        """Reset the bucket to its initial state. Typically called after the gradient synchronization is finished."""
-        self.handle = None
-        # Clear the set of parameters ready for gradient synchronization.
-        self.params_with_grad_ready.clear()
-        # Zero the gradient tensor.
-        self.grad_data.zero_()
+        """Clear bookkeeping state and zero the gradient buffer after synchronization."""
+        raise NotImplementedError("Reset the async handle, ready-set, and gradient storage for reuse.")
 
     def wait(self) -> None:
-        """wait for the allreduce operation to finish"""
-        assert self.handle is not None, "You should launch an allreduce operation before waiting for it to finish"
-        # Block until the all-reduce operation finishes.
-        self.handle.wait()
+        """Block until the outstanding all-reduce operation completes."""
+        raise NotImplementedError("Synchronize with the async all-reduce handle before proceeding.")
 
     def mark_param_as_ready(self, param: torch.nn.Parameter) -> None:
-        """Mark a parameter as ready for gradient synchronization. Launches synchronization when all parameters in the bucket have their gradients ready."""
-        assert param in self.params and param not in self.params_with_grad_ready
-        self.params_with_grad_ready.add(param)
-        # When all parameters in the bucket have their gradients ready, synchronize gradients
-        if len(self.params_with_grad_ready) == len(self.params):
-            self.sync_gradient()
+        """Record that a parameter's gradient is ready and trigger sync when the bucket is full."""
+        raise NotImplementedError("Update readiness tracking and start all-reduce when all grads are ready.")
+
 
 class BucketManager:
-    def __init__(self, params: List[torch.nn.Parameter], process_group: torch.distributed.ProcessGroup, bucket_size: int, grad_type: torch.dtype = torch.float32) -> None:
-        # Convert parameter generator to a list.
-        self.params = list(params)
-        # List of buckets.
-        self.buckets = []
-        self.process_group = process_group
-        self.process_group_size = dist.get_world_size(group=self.process_group)
-        # Map each parameter to its corresponding bucket/place (start, end, bucket_idx).
-        self.params_to_bucket_location = {}
-        # Actual sizes of each bucket.
-        self.bucket_size = bucket_size
-        self.bucket_sizes = None
-        # List of tensors to store gradients, one tensor per bucket.
-        self.grad_data_list = []
-        self.grad_type = grad_type
-        # Divide gradients into buckets based on the provided bucket size.
-        self._initialize_buckets()
-    
-    def _initialize_buckets(self) -> None:
-        """Divides model parameters into buckets for gradient synchronization based on the bucket size."""
-        cur_bucket_size = 0 
-        cur_bucket_idx = 0
-        
-        # Assign parameters to buckets. 
-        for param in self.params:
-            if not param.requires_grad:
-                continue
-            
-            # If the bucket is empty, add the parameter to the bucket.
-            if cur_bucket_size == 0:
-                self.params_to_bucket_location[param] = (0, param.numel(), cur_bucket_idx)
-                cur_bucket_size = param.numel()
-                continue
-            
-            # If the parameter cannot fit in the current bucket, create a new bucket
-            if cur_bucket_size + param.numel() > self.bucket_size:
-                cur_bucket_idx += 1
-                self.params_to_bucket_location[param] = (0, param.numel(), cur_bucket_idx)
-                cur_bucket_size = param.numel()
-            else:
-                self.params_to_bucket_location[param] = (cur_bucket_size, cur_bucket_size + param.numel(), cur_bucket_idx)
-                cur_bucket_size += param.numel()
+    """Group parameters into gradient buckets and orchestrate their synchronization."""
 
-        # Gather information about the bucket sizes and the parameters in each bucket
-        bucket_sizes = [0] * (cur_bucket_idx + 1)
-        buckets_to_params = [[] for _ in range(cur_bucket_idx + 1)]
-        for param, (_, end, idx) in self.params_to_bucket_location.items():
-            bucket_sizes[idx] = max(bucket_sizes[idx], end)
-            buckets_to_params[idx].append(param)
-        
-        # Create tensors for storing gradients and initialize Bucket objects.
-        for i in range(len(bucket_sizes)):
-            self.grad_data_list.append(torch.zeros(bucket_sizes[i], dtype=self.grad_type, device='cuda'))
-            self.buckets.append(Bucket(buckets_to_params[i], self.grad_data_list[i], self.process_group))
-        
-        # Create gradient views for each parameter.
-        for param in self.params[::-1]:
-            if not param.requires_grad:
-                continue
-            data_start_index, data_end_index, bucket_id = self.params_to_bucket_location[param]
-            # param.main_grad is used for gradient calculation
-            param.main_grad = self._get_view_from_tensor(self.grad_data_list[bucket_id], param.shape, data_start_index, data_end_index)
-            
+    def __init__(
+        self,
+        params: List[torch.nn.Parameter],
+        process_group: torch.distributed.ProcessGroup,
+        bucket_size: int,
+        grad_type: torch.dtype = torch.float32,
+    ) -> None:
+        """Partition parameters into buckets, allocate gradient storage, and build lookup tables."""
+        raise NotImplementedError("Initialize bucket structures based on the provided capacity and dtype.")
+
+    def _initialize_buckets(self) -> None:
+        """Assign parameters to buckets, create gradient tensors, and wire hooks."""
+        raise NotImplementedError("Implement bucketing logic and gradient view creation.")
+
     def _get_view_from_tensor(self, tensor: torch.Tensor, shape: torch.Size, start: int, end: int) -> torch.Tensor:
-        return tensor[start:end].view(shape)
-    
+        """Return a view into the bucket tensor representing one parameter's gradient storage."""
+        raise NotImplementedError("Slice the shared gradient tensor and reshape it to the parameter's shape.")
+
     def reset(self) -> None:
-        # Reset all buckets by clearing the gradients and internal states.
-        for bucket in self.buckets:
-            bucket.reset()
-    
+        """Reset all buckets before starting a new backward pass."""
+        raise NotImplementedError("Iterate buckets and clear their synchronization state and buffers.")
+
     def wait(self) -> None:
-        # Wait for all buckets to complete their gradient synchronization
-        for bucket in self.buckets:
-            bucket.wait()
-    
+        """Wait for all buckets to finish their pending gradient reductions."""
+        raise NotImplementedError("Call `wait` on each bucket to ensure all async ops are complete.")
+
     def mark_param_as_ready(self, param: torch.nn.Parameter) -> None:
-        # Mark a parameter's gradient as ready for synchronization.
-        bucket_idx = self.params_to_bucket_location[param][2]
-        self.buckets[bucket_idx].mark_param_as_ready(param)
+        """Flag a parameter's gradient as ready for synchronization."""
+        raise NotImplementedError("Route the parameter to its bucket and mark it as ready there.")
+
 
 class DataParallelBucket(nn.Module):
-    def __init__(self, module, bucket_cap_mb=25, grad_type = torch.float32):
+    """Gradient-bucketing data-parallel wrapper inspired by Megatron-LM's communication scheme."""
+
+    def __init__(self, module, bucket_cap_mb=25, grad_type=torch.float32):
+        """Construct bucket manager state and register hooks for gradient accumulation."""
         super().__init__()
-        self.module = module
-        # whether to synchronize gradients during backward pass. Set to False when using gradient accumulation
-        self.require_backward_grad_sync = True
-        grad_size = 2 # bfloat16 gradient: 2 bytes
-        # number of gradients in one bucket
-        # 1 MB = 1024 KB = 1024 * 1024 bytes
-        bucket_size = bucket_cap_mb * 1024 * 1024 // grad_size
-        self.bucket_manager = BucketManager(module.parameters(), pgm.process_group_manager.dp_group, bucket_size, grad_type)
-        self.register_backward_hook()
-        # whether the callback for wait gradient synchronization is set
-        self._post_backward_callback_set = False
-        
+        raise NotImplementedError("Initialize bucket manager, track synchronization flags, and register hooks.")
+
     def forward(self, *inputs, **kwargs):
-        return self.module(*inputs, **kwargs)
+        """Forward to the wrapped module."""
+        raise NotImplementedError("Call the underlying module with provided arguments.")
 
     def backward(self, input_tensor, output_tensor, output_tensor_grad):
-        return self.module.backward(input_tensor, output_tensor, output_tensor_grad)
-    
+        """Optionally expose the backward interface of the wrapped module (if defined)."""
+        raise NotImplementedError("Delegate backward pass handling to the wrapped module if supported.")
+
     def get_flops(self, *args, **kwargs):
-        return self.module.get_flops(*args, **kwargs)
-    
+        """Proxy the FLOPs accounting helper from the wrapped module."""
+        raise NotImplementedError("Call the wrapped module's FLOPs estimator if available.")
+
     def register_backward_hook(self):
-        """
-        Registers a backward hook to manually accumulate and synchronize gradients.
-        
-        This hook serves two main purposes:
-        1. PyTorch does not natively support gradient accumulation with mixed precision.
-        2. After gradient accumulation, it flags parameters as ready for synchronization.
-        
-        The gradient accumulation functions are stored to prevent them from going out of scope.
-        
-        References:
-        - https://github.com/NVIDIA/Megatron-LM/issues/690
-        - https://pytorch.org/docs/stable/generated/torch.autograd.graph.Node.register_hook.html
-        - https://arxiv.org/abs/2006.15704 (page 5)
-        """
-        self.grad_accs = []
-        for param in self.module.parameters():
-            if param.requires_grad:
-                # Expand so we get access to grad_fn.
-                param_tmp = param.expand_as(param)
-                # Get the gradient accumulator function.
-                grad_acc_fn = param_tmp.grad_fn.next_functions[0][0]
-                grad_acc_fn.register_hook(self._make_param_hook(param, self.bucket_manager))
-                self.grad_accs.append(grad_acc_fn)
-                
-    def _make_param_hook(self, param: torch.nn.Parameter,bucket_manager: BucketManager):
-        """
-        Creates the a hook for each parameter to handle gradient accumulation and synchronization.
-        """
-        def param_hook(*unused):
-            """
-            The hook called after the gradient is ready. It performs the following:
-            1. Accumulates the gradient into the main gradient.
-            2. Adds a post-backward callback to wait for gradient synchronization completion.
-            3. Marks the parameter as ready for synchronization.
-            """
-            if param.requires_grad:
-                assert param.grad is not None
-                param.main_grad.add_(param.grad.data) # accumulate the gradients
-                param.grad = None
-                
-                # skip the gradient synchronization (gradient accumulation/PP micro batches)
-                if self.require_backward_grad_sync:
-                    # Add a callback to wait for gradient synchronization. Ensures the callback is added only once.
-                    # Callback is executed after the backward pass. It should be added per backward pass.
-                    if not self._post_backward_callback_set:
-                        torch.autograd.Variable._execution_engine.queue_callback(self._post_backward)
-                        self._post_backward_callback_set = True
-                        
-                    # mark the parameter as ready for gradient synchronization. 
-                    bucket_manager.mark_param_as_ready(param) 
-        return param_hook
+        """Attach hooks that accumulate gradients into buckets and trigger comms when ready."""
+        raise NotImplementedError("Follow the Megatron-LM style strategy for registering gradient hooks.")
+
+    def _make_param_hook(self, param: torch.nn.Parameter, bucket_manager: BucketManager):
+        """Create the per-parameter hook that accumulates gradients and marks readiness."""
+        raise NotImplementedError("Return a closure that accumulates into `main_grad` and notifies the bucket manager.")
 
     def _post_backward(self):
-        """
-        A post-backward callback that waits for gradient synchronization to finish, then copies 
-        the synchronized gradients back to the parameters' grad attribute.
-        
-        This method is called after the backward pass and before the optimizer step.
-        """
-        self.bucket_manager.wait()
-        self._post_backward_callback_set = False
-        # copy to params.grad so we can use the optimizer to update the parameters
-        for p in self.module.parameters():
-            if p.requires_grad:
-                p.grad = p.main_grad.to(p.dtype) # In PyTorch, you cannot assign a gradient with one data type to a tensor of another data type.
+        """Callback executed after the backward pass to finalize gradient synchronization."""
+        raise NotImplementedError("Wait for all buckets, reset flags, and copy reduced grads back onto parameters.")
 
     def reset(self):
-        self.bucket_manager.reset()
-
-### end Data Parallel (bucket)
+        """Reset buckets between iterations when using gradient accumulation."""
+        raise NotImplementedError("Delegate to the bucket manager reset routine.")
