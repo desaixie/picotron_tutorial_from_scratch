@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.distributed as dist
 import torch.nn.functional as F
 import process_group_manager as pgm
+# CPU/MPS NOTE: NCCL collectives can be replaced with gloo for CPU-only correctness tests, albeit at significantly lower performance.
 
 ### begin TP communications
 def split_tensor_along_last_dim(tensor, num_partitions):
@@ -20,7 +21,7 @@ class Reduce(torch.autograd.Function):
     def forward(ctx, input):
         if pgm.process_group_manager.tp_world_size == 1:
             return input
-        dist.all_reduce(input, op=dist.ReduceOp.SUM, group=pgm.process_group_manager.tp_group)
+        dist.all_reduce(input, op=dist.ReduceOp.SUM, group=pgm.process_group_manager.tp_group)  # CPU/MPS NOTE: Works with gloo for correctness when CUDA/NCCL is unavailable.
         return input
 
     @staticmethod
@@ -38,7 +39,7 @@ class Gather(torch.autograd.Function):
         input = input.contiguous()
         tensor_list = [torch.empty_like(input) for _ in range(pgm.process_group_manager.tp_world_size)]
         tensor_list[pgm.process_group_manager.tp_rank] = input
-        dist.all_gather(tensor_list, input, group=pgm.process_group_manager.tp_group)
+        dist.all_gather(tensor_list, input, group=pgm.process_group_manager.tp_group)  # CPU/MPS NOTE: Use gloo backend for CPU-only execution.
         output = torch.cat(tensor_list, dim=last_dim).contiguous()
         return output
 
@@ -60,7 +61,7 @@ class Copy(torch.autograd.Function):
     def backward(ctx, grad_output):
         if pgm.process_group_manager.tp_world_size == 1:
           return grad_output
-        dist.all_reduce(grad_output, op=dist.ReduceOp.SUM, group=pgm.process_group_manager.tp_group)
+        dist.all_reduce(grad_output, op=dist.ReduceOp.SUM, group=pgm.process_group_manager.tp_group)  # CPU/MPS NOTE: Replace NCCL with gloo for CPU correctness.
         return grad_output
 
 ### end TP communications

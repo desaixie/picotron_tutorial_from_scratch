@@ -1,19 +1,23 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from flash_attn.flash_attn_interface import flash_attn_func
-from flash_attn.layers.rotary import apply_rotary_emb
-from flash_attn.ops.triton.layer_norm import layer_norm_fn
+from flash_attn.flash_attn_interface import flash_attn_func  # CPU/MPS NOTE: Swap for scaled_dot_product_attention or a manual implementation when FlashAttention is unavailable.
+from flash_attn.layers.rotary import apply_rotary_emb  # CPU/MPS NOTE: Replace with a pure PyTorch rotary embedding helper on non-CUDA devices.
+from flash_attn.ops.triton.layer_norm import layer_norm_fn  # CPU/MPS NOTE: Substitute with torch.nn.LayerNorm or a simple RMSNorm on CPU/MPS.
 
 
 def flash_attention(q, k, v, causal=True):
     """Compute the flash-attention kernel on `[batch, heads, seq, dim]` tensors and return the attended values."""
-    raise NotImplementedError("Implement flash attention call and tensor reshaping logic.")
+    raise NotImplementedError(
+        "Implement flash attention call and tensor reshaping logic."  # CPU/MPS NOTE: Use scaled_dot_product_attention or a reference attention kernel when FlashAttention is missing.
+    )
 
 
 def get_cos_sin(seq_length, head_dim, base=500000.0):
     """Generate rotary positional embedding cos/sin tables sized for the given sequence length and head dimension."""
-    raise NotImplementedError("Precompute the cosine and sine tables for rotary embeddings.")
+    raise NotImplementedError(
+        "Precompute the cosine and sine tables for rotary embeddings."  # CPU/MPS NOTE: Ensure any cached tensors are created on the active device instead of hard-coding cuda.
+    )
 
 
 class TritonRMSNorm(nn.Module):
@@ -22,7 +26,9 @@ class TritonRMSNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-5, device=None, dtype=None):
         """Store normalization hyperparameters and create learnable scale weights."""
         super().__init__()
-        raise NotImplementedError("Initialize RMSNorm parameters and buffers.")
+        raise NotImplementedError(
+            "Initialize RMSNorm parameters and buffers."  # CPU/MPS NOTE: Provide a pure PyTorch RMSNorm fallback when Triton kernels are unavailable.
+        )
 
     def forward(
         self,

@@ -25,17 +25,23 @@ from utils import print, set_all_seed, to_readable_format
 
 def train_step(model, dataloader, device):
     """Iterate over micro-batches, optionally defer grad sync, and return accumulated loss."""
-    raise NotImplementedError("Implement gradient accumulation with optional all-reduce on the final micro-batch.")
+    raise NotImplementedError(
+        "Implement gradient accumulation with optional all-reduce on the final micro-batch."  # CPU/MPS NOTE: Guard CUDA-only APIs and use gloo for gradient sync on CPU.
+    )
 
 
 def parse_args():
     """Expose CLI options for data-parallel training configuration and logging."""
-    raise NotImplementedError("Define argparse arguments covering environment, model, dataset, and parallelism settings.")
+    raise NotImplementedError(
+        "Define argparse arguments covering environment, model, dataset, and parallelism settings."  # CPU/MPS NOTE: Include device/backend flags for CPU/MPS execution.
+    )
 
 
 def main():
     """Initialize DP/TP groups, wrap the model, run the training loop, and handle logging."""
-    raise NotImplementedError("Implement setup, optional tensor/data parallel wrapping, training loop, and teardown.")
+    raise NotImplementedError(
+        "Implement setup, optional tensor/data parallel wrapping, training loop, and teardown."  # CPU/MPS NOTE: Prefer backend="gloo" and guard torch.cuda.* usage when GPUs are absent.
+    )
 
 
 if __name__ == "__main__":

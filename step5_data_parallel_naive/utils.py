@@ -12,7 +12,9 @@ def print(*args, is_print_rank=True, **kwargs):
 
 def set_all_seed(seed):
     """Seed Python, NumPy, and PyTorch RNGs (CPU and CUDA) with the provided value."""
-    raise NotImplementedError("Set the seed for all relevant random number generators.")
+    raise NotImplementedError(
+        "Set the seed for all relevant random number generators."  # CPU/MPS NOTE: Guard CUDA seeding and include torch.mps if present.
+    )
 
 
 def to_readable_format(num, precision=3):

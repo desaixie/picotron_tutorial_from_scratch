@@ -1,20 +1,24 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from flash_attn.flash_attn_interface import flash_attn_func
-from flash_attn.layers.rotary import apply_rotary_emb
-from flash_attn.ops.triton.layer_norm import layer_norm_fn
+from flash_attn.flash_attn_interface import flash_attn_func  # CPU/MPS NOTE: Replace with scaled_dot_product_attention when FlashAttention kernels are unavailable.
+from flash_attn.layers.rotary import apply_rotary_emb  # CPU/MPS NOTE: Use a pure PyTorch rotary helper for non-CUDA hardware.
+from flash_attn.ops.triton.layer_norm import layer_norm_fn  # CPU/MPS NOTE: Swap for torch.nn.LayerNorm or a Python RMSNorm without Triton.
 import process_group_manager as pgm
 
 
 def flash_attention(q, k, v, causal=True):
     """Run flash-attention on tensor-parallel shards within the bucketed data-parallel setup."""
-    raise NotImplementedError("Implement tensor layout conversion and flash-attention invocation.")
+    raise NotImplementedError(
+        "Implement tensor layout conversion and flash-attention invocation."  # CPU/MPS NOTE: Fall back to scaled_dot_product_attention when FlashAttention is unavailable.
+    )
 
 
 def get_cos_sin(seq_length, head_dim, base=500000.0):
     """Build rotary embedding cosine and sine tables for the configured sequence length."""
-    raise NotImplementedError("Generate cosine and sine caches sized for the attention heads.")
+    raise NotImplementedError(
+        "Generate cosine and sine caches sized for the attention heads."  # CPU/MPS NOTE: Create caches on the active device instead of assuming cuda.
+    )
 
 
 class TritonRMSNorm(nn.Module):
@@ -23,7 +27,9 @@ class TritonRMSNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-5, device=None, dtype=None):
         """Initialize normalization hyperparameters and learnable weights."""
         super().__init__()
-        raise NotImplementedError("Allocate RMSNorm parameters and buffers.")
+        raise NotImplementedError(
+            "Allocate RMSNorm parameters and buffers."  # CPU/MPS NOTE: Provide a non-Triton RMSNorm fallback implementation.
+        )
 
     def forward(
         self,
@@ -35,7 +41,9 @@ class TritonRMSNorm(nn.Module):
         return_dropout_mask=False,
     ):
         """Apply Triton RMSNorm with optional residual/dropout integrations."""
-        raise NotImplementedError("Call the Triton RMSNorm kernel with stored weights.")
+        raise NotImplementedError(
+            "Call the Triton RMSNorm kernel with stored weights."  # CPU/MPS NOTE: Use the fallback RMSNorm when Triton is unavailable.
+        )
 
 
 class Attention(nn.Module):

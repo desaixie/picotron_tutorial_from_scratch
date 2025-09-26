@@ -86,17 +86,17 @@ if __name__ == "__main__":
     # Set environment variables
     os.environ["OMP_NUM_THREADS"] = args.omp_num_threads
     os.environ["TOKENIZERS_PARALLELISM"] = args.tokenizers_parallelism
-    os.environ["DEVICE"] = "cuda"
+    os.environ["DEVICE"] = "cuda"  # CPU/MPS NOTE: Allow overriding to cpu/mps when CUDA is unavailable.
     
     local_rank = int(os.environ["LOCAL_RANK"])
     global_rank = int(os.environ["RANK"])
     world_size = int(os.environ["WORLD_SIZE"])
     backend = "nccl"
-    torch.cuda.set_device(local_rank)
+    torch.cuda.set_device(local_rank)  # CPU/MPS NOTE: Guard CUDA-only calls and use torch.device("cpu"/"mps") when needed.
     device = torch.device("cuda", local_rank)
-    dtype = torch.bfloat16
+    dtype = torch.bfloat16  # CPU/MPS NOTE: Prefer torch.float32 when bf16 is unsupported.
 
-    dist.init_process_group(rank=global_rank, world_size=world_size, backend=backend, init_method=f"env://", timeout=datetime.timedelta(minutes=2))
+    dist.init_process_group(rank=global_rank, world_size=world_size, backend=backend, init_method=f"env://", timeout=datetime.timedelta(minutes=2))  # CPU/MPS NOTE: Use backend="gloo" when NCCL is unavailable.
     setup_process_group_manager(dp_size=args.dp_size, pp_size=args.pp_size, tp_size=args.tp_size)
 
     is_wandb_rank = pgm.process_group_manager.tp_rank == 0 and pgm.process_group_manager.dp_rank == 0 and pgm.process_group_manager.pp_is_last_stage
@@ -175,13 +175,13 @@ if __name__ == "__main__":
             f"Tokens/s: {to_readable_format(tokens_per_step / step_duration)}, "
             f"Tokens/s/GPU: {to_readable_format(tokens_per_step / step_duration / world_size)}, "
             f"Tokens: {to_readable_format(trained_token)}{('/' + to_readable_format(args.max_tokens))}, "
-            f"Memory usage: {torch.cuda.memory_reserved() / 1e9:.2f}GB"
+            f"Memory usage: {torch.cuda.memory_reserved() / 1e9:.2f}GB"  # CPU/MPS NOTE: Guard torch.cuda.* usage when running without CUDA.
             , is_print_rank=is_wandb_rank
         )
         
         if is_wandb_rank and args.use_wandb:
             wandb.log({"loss": loss, "tokens_per_step": tokens_per_step, "tokens_per_second": tokens_per_step / step_duration,\
-                "memory_usage": torch.cuda.memory_reserved() / 1e9, "trained_tokens": tokens_per_step})
+                "memory_usage": torch.cuda.memory_reserved() / 1e9, "trained_tokens": tokens_per_step})  # CPU/MPS NOTE: Skip CUDA-only metrics on CPU runs.
 
     if is_wandb_rank and args.use_wandb:
         wandb.finish()

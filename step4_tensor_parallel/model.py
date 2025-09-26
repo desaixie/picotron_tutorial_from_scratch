@@ -1,20 +1,24 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from flash_attn.flash_attn_interface import flash_attn_func
-from flash_attn.layers.rotary import apply_rotary_emb
-from flash_attn.ops.triton.layer_norm import layer_norm_fn
+from flash_attn.flash_attn_interface import flash_attn_func  # CPU/MPS NOTE: Swap for scaled_dot_product_attention or a reference implementation.
+from flash_attn.layers.rotary import apply_rotary_emb  # CPU/MPS NOTE: Use a pure PyTorch rotary helper when FlashAttention is unavailable.
+from flash_attn.ops.triton.layer_norm import layer_norm_fn  # CPU/MPS NOTE: Replace with torch.nn.LayerNorm or a Python RMSNorm fallback on non-CUDA hardware.
 import process_group_manager as pgm
 
 
 def flash_attention(q, k, v, causal=True):
     """Run flash-attention on local tensor-parallel shards of the query/key/value tensors."""
-    raise NotImplementedError("Implement the flash-attention call after permuting tensors to the expected layout.")
+    raise NotImplementedError(
+        "Implement the flash-attention call after permuting tensors to the expected layout."  # CPU/MPS NOTE: Fall back to scaled_dot_product_attention if FlashAttention kernels are unavailable.
+    )
 
 
 def get_cos_sin(seq_length, head_dim, base=500000.0):
     """Generate rotary embedding cosine and sine caches for tensor-parallel attention layers."""
-    raise NotImplementedError("Produce cosine and sine lookup tables sized for the target sequence length and head dim.")
+    raise NotImplementedError(
+        "Produce cosine and sine lookup tables sized for the target sequence length and head dim."  # CPU/MPS NOTE: Allocate caches on the active device rather than assuming cuda.
+    )
 
 
 class TritonRMSNorm(nn.Module):
@@ -23,7 +27,9 @@ class TritonRMSNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-5, device=None, dtype=None):
         """Create learnable scaling weights and configure numerical stability epsilon."""
         super().__init__()
-        raise NotImplementedError("Allocate and register RMSNorm parameters and buffers.")
+        raise NotImplementedError(
+            "Allocate and register RMSNorm parameters and buffers."  # CPU/MPS NOTE: Provide a non-Triton RMSNorm fallback implementation.
+        )
 
     def forward(
         self,

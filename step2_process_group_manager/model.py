@@ -1,19 +1,23 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from flash_attn.flash_attn_interface import flash_attn_func
-from flash_attn.layers.rotary import apply_rotary_emb
-from flash_attn.ops.triton.layer_norm import layer_norm_fn
+from flash_attn.flash_attn_interface import flash_attn_func  # CPU/MPS NOTE: Swap for scaled_dot_product_attention or a naive attention variant without FlashAttention.
+from flash_attn.layers.rotary import apply_rotary_emb  # CPU/MPS NOTE: Replace with a pure PyTorch rotary helper for non-CUDA backends.
+from flash_attn.ops.triton.layer_norm import layer_norm_fn  # CPU/MPS NOTE: Provide a torch.nn.LayerNorm or Python RMSNorm fallback when Triton kernels are unavailable.
 
 
 def flash_attention(q, k, v, causal=True):
     """Compute flash-attention on query/key/value tensors shaped `[batch, heads, seq, dim]`."""
-    raise NotImplementedError("Implement the flash-attention call including tensor layout conversions.")
+    raise NotImplementedError(
+        "Implement the flash-attention call including tensor layout conversions."  # CPU/MPS NOTE: Fall back to scaled_dot_product_attention when FlashAttention is missing.
+    )
 
 
 def get_cos_sin(seq_length, head_dim, base=500000.0):
     """Build rotary position embedding cosine and sine caches for the configured sequence length."""
-    raise NotImplementedError("Generate and return cosine and sine tables for rotary embeddings.")
+    raise NotImplementedError(
+        "Generate and return cosine and sine tables for rotary embeddings."  # CPU/MPS NOTE: Create caches on the active device rather than assuming cuda.
+    )
 
 
 class TritonRMSNorm(nn.Module):
@@ -22,7 +26,9 @@ class TritonRMSNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-5, device=None, dtype=None):
         """Initialize learnable scaling weights and optional device/dtype placement."""
         super().__init__()
-        raise NotImplementedError("Allocate RMSNorm parameters and buffers.")
+        raise NotImplementedError(
+            "Allocate RMSNorm parameters and buffers."  # CPU/MPS NOTE: Implement a pure PyTorch RMSNorm fallback.
+        )
 
     def forward(
         self,

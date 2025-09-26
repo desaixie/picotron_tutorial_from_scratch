@@ -25,17 +25,23 @@ from utils import print, set_all_seed, to_readable_format
 
 def train_step(model, dataloader, device):
     """Run one accumulation step with bucketed gradient synchronization and return the scaled loss."""
-    raise NotImplementedError("Implement gradient accumulation with bucketed all-reduce semantics.")
+    raise NotImplementedError(
+        "Implement gradient accumulation with bucketed all-reduce semantics."  # CPU/MPS NOTE: Use gloo collectives and guard torch.cuda.* usage when GPUs are absent.
+    )
 
 
 def parse_args():
     """Define CLI options for the bucketed data-parallel training script."""
-    raise NotImplementedError("Add argparse arguments for environment, model, dataset, parallelism, and logging settings.")
+    raise NotImplementedError(
+        "Add argparse arguments for environment, model, dataset, parallelism, and logging settings."  # CPU/MPS NOTE: Provide backend/device flags for CPU execution.
+    )
 
 
 def main():
     """Initialize process groups, wrap the model with bucketed DP, and execute the training loop."""
-    raise NotImplementedError("Implement orchestration for the bucketed data-parallel training step.")
+    raise NotImplementedError(
+        "Implement orchestration for the bucketed data-parallel training step."  # CPU/MPS NOTE: Prefer backend="gloo" and guard CUDA-only utilities.
+    )
 
 
 if __name__ == "__main__":

@@ -12,7 +12,9 @@ def print(*args, is_print_rank=True, **kwargs):
 
 def set_all_seed(seed):
     """Seed Python, NumPy, and PyTorch RNGs (CPU and CUDA) for deterministic runs."""
-    raise NotImplementedError("Propagate the provided seed to each supported RNG backend.")
+    raise NotImplementedError(
+        "Propagate the provided seed to each supported RNG backend."  # CPU/MPS NOTE: Only call torch.cuda.manual_seed_all() when CUDA is available and seed torch.mps if needed.
+    )
 
 
 def to_readable_format(num, precision=3):

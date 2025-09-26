@@ -41,17 +41,17 @@ if __name__ == "__main__":
     # Set environment variables
     os.environ["OMP_NUM_THREADS"] = args.omp_num_threads
     os.environ["TOKENIZERS_PARALLELISM"] = args.tokenizers_parallelism
-    os.environ["DEVICE"] = "cuda"
+    os.environ["DEVICE"] = "cuda"  # CPU/MPS NOTE: Allow overriding to "cpu" or "mps" when CUDA is not available.
     
     local_rank = int(os.environ["LOCAL_RANK"])
     global_rank = int(os.environ["RANK"])
     world_size = int(os.environ["WORLD_SIZE"])
     backend = "nccl"
-    torch.cuda.set_device(local_rank)
+    torch.cuda.set_device(local_rank)  # CPU/MPS NOTE: Wrap in a CUDA availability check and use torch.device("cpu" or "mps") otherwise.
     device = torch.device("cuda", local_rank)
-    dtype = torch.bfloat16
+    dtype = torch.bfloat16  # CPU/MPS NOTE: Switch to torch.float32 when running without CUDA bf16 support.
 
-    dist.init_process_group(rank=global_rank, world_size=world_size, backend=backend, init_method=f"env://", timeout=datetime.timedelta(minutes=2))
+    dist.init_process_group(rank=global_rank, world_size=world_size, backend=backend, init_method=f"env://", timeout=datetime.timedelta(minutes=2))  # CPU/MPS NOTE: Use backend="gloo" for CPU-only execution.
 
     set_all_seed(args.seed)
 

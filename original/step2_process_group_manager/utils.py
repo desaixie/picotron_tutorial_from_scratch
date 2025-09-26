@@ -17,7 +17,7 @@ def print(*args, is_print_rank=True, **kwargs):
 def set_all_seed(seed):
     for module in [random, np.random]: module.seed(seed)
     torch.manual_seed(seed)
-    if torch.cuda.is_available(): torch.cuda.manual_seed_all(seed)
+    if torch.cuda.is_available(): torch.cuda.manual_seed_all(seed)  # CPU/MPS NOTE: Skip CUDA seeding when running on CPU-only setups.
     
 def to_readable_format(num, precision=3):
     num_str = str(num)

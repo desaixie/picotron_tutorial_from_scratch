@@ -1,19 +1,23 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from flash_attn.flash_attn_interface import flash_attn_func
-from flash_attn.layers.rotary import apply_rotary_emb
-from flash_attn.ops.triton.layer_norm import layer_norm_fn
+from flash_attn.flash_attn_interface import flash_attn_func  # CPU/MPS NOTE: Swap for scaled_dot_product_attention or another reference kernel on non-CUDA hardware.
+from flash_attn.layers.rotary import apply_rotary_emb  # CPU/MPS NOTE: Implement rotary embeddings with pure PyTorch ops when FlashAttention is unavailable.
+from flash_attn.ops.triton.layer_norm import layer_norm_fn  # CPU/MPS NOTE: Replace with torch.nn.LayerNorm or a Python RMSNorm fallback.
 
 
 def flash_attention(q, k, v, causal=True):
     """Execute flash-attention on the provided query/key/value tensors."""
-    raise NotImplementedError("Implement the flash-attention invocation with proper tensor permutation.")
+    raise NotImplementedError(
+        "Implement the flash-attention invocation with proper tensor permutation."  # CPU/MPS NOTE: Fall back to scaled_dot_product_attention when FlashAttention kernels are absent.
+    )
 
 
 def get_cos_sin(seq_length, head_dim, base=500000.0):
     """Compute rotary embedding cosine and sine caches for the requested configuration."""
-    raise NotImplementedError("Generate cosine and sine tables for rotary positional embeddings.")
+    raise NotImplementedError(
+        "Generate cosine and sine tables for rotary positional embeddings."  # CPU/MPS NOTE: Create caches on the current device rather than assuming cuda.
+    )
 
 
 class TritonRMSNorm(nn.Module):
@@ -22,7 +26,9 @@ class TritonRMSNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-5, device=None, dtype=None):
         """Configure normalization hyperparameters and learnable weights."""
         super().__init__()
-        raise NotImplementedError("Store epsilon and allocate the scaling parameter tensor.")
+        raise NotImplementedError(
+            "Store epsilon and allocate the scaling parameter tensor."  # CPU/MPS NOTE: Provide a fallback implementation without Triton.
+        )
 
     def forward(
         self,

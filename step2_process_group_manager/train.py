@@ -18,12 +18,16 @@ from utils import print, set_all_seed
 
 def parse_args():
     """Define CLI for configuring tensor/pipeline/data parallel sizes and run metadata."""
-    raise NotImplementedError("Add arguments for environment, model, training, and logging options.")
+    raise NotImplementedError(
+        "Add arguments for environment, model, training, and logging options."  # CPU/MPS NOTE: Provide flags to choose distributed backend/device so CPU runs can select gloo.
+    )
 
 
 def main():
     """Initialize distributed process groups, build the model, run one dummy step, and report metrics."""
-    raise NotImplementedError("Implement process group setup, seeding, model instantiation, training step, and logging.")
+    raise NotImplementedError(
+        "Implement process group setup, seeding, model instantiation, training step, and logging."  # CPU/MPS NOTE: Guard torch.cuda.* usage, prefer backend="gloo" on CPU, and skip NCCL-specific assumptions.
+    )
 
 
 if __name__ == "__main__":

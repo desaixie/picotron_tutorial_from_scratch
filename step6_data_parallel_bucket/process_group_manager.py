@@ -8,7 +8,9 @@ class ProcessGroupManager:
 
     def __init__(self, dp_size, pp_size, tp_size):
         """Populate rank metadata, construct the parallelism grid, and create subgroup handles."""
-        raise NotImplementedError("Initialize DP, PP, and TP groups along with helper attributes.")
+        raise NotImplementedError(
+            "Initialize DP, PP, and TP groups along with helper attributes."  # CPU/MPS NOTE: Prefer backend="gloo" and guard CUDA-only collectives.
+        )
 
     def __str__(self):
         """Summarize the current rank's position and group sizes."""

@@ -1,6 +1,7 @@
 import os
 import torch
 import torch.distributed as dist
+# CPU/MPS NOTE: Use gloo backend when NCCL is unavailable and guard CUDA-specific subgroup assumptions.
 
 class ProcessGroupManager:
     def __init__(self, dp_size, pp_size, tp_size):

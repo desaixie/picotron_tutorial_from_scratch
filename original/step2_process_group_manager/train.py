@@ -50,17 +50,17 @@ if __name__ == "__main__":
     # Set environment variables
     os.environ["OMP_NUM_THREADS"] = args.omp_num_threads
     os.environ["TOKENIZERS_PARALLELISM"] = args.tokenizers_parallelism
-    os.environ["DEVICE"] = "cuda"
+    os.environ["DEVICE"] = "cuda"  # CPU/MPS NOTE: Allow overriding to cpu/mps when CUDA is unavailable.
     
     local_rank = int(os.environ["LOCAL_RANK"])
     global_rank = int(os.environ["RANK"])
     world_size = int(os.environ["WORLD_SIZE"])
     backend = "nccl"
-    torch.cuda.set_device(local_rank)
+    torch.cuda.set_device(local_rank)  # CPU/MPS NOTE: Guard this call and instead use torch.device("cpu"/"mps") for non-CUDA runs.
     device = torch.device("cuda", local_rank)
-    dtype = torch.bfloat16
+    dtype = torch.bfloat16  # CPU/MPS NOTE: Switch to torch.float32 without CUDA bf16 support.
 
-    dist.init_process_group(rank=global_rank, world_size=world_size, backend=backend, init_method=f"env://", timeout=datetime.timedelta(minutes=2))
+    dist.init_process_group(rank=global_rank, world_size=world_size, backend=backend, init_method=f"env://", timeout=datetime.timedelta(minutes=2))  # CPU/MPS NOTE: Prefer backend="gloo" when NCCL is unavailable.
     setup_process_group_manager(dp_size=args.dp_size, pp_size=args.pp_size, tp_size=args.tp_size)
 
     is_wandb_rank = pgm.process_group_manager.tp_rank == 0 and pgm.process_group_manager.dp_rank == 0 and pgm.process_group_manager.pp_is_last_stage

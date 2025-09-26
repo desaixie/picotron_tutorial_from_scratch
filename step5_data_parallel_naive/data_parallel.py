@@ -14,7 +14,9 @@ class DataParallelNaive(nn.Module):
     def __init__(self, module):
         """Wrap the provided module and register gradient hooks for naive data parallelism."""
         super().__init__()
-        raise NotImplementedError("Store the wrapped module and set up backward hooks for gradient sync.")
+        raise NotImplementedError(
+            "Store the wrapped module and set up backward hooks for gradient sync."  # CPU/MPS NOTE: Guard CUDA-only gradient ops and use gloo all-reduce when GPUs are absent.
+        )
 
     def forward(self, *inputs, **kwargs):
         """Delegate the forward pass to the wrapped module."""
@@ -26,4 +28,6 @@ class DataParallelNaive(nn.Module):
 
     def _allreduce_grads(self, grad):
         """All-reduce gradients across data-parallel ranks when synchronization is enabled."""
-        raise NotImplementedError("Perform the gradient all-reduce and averaging across the DP group.")
+        raise NotImplementedError(
+            "Perform the gradient all-reduce and averaging across the DP group."  # CPU/MPS NOTE: Use backend="gloo" for CPU-only correctness tests.
+        )

@@ -8,7 +8,9 @@ class ProcessGroupManager:
 
     def __init__(self, dp_size, pp_size, tp_size):
         """Derive ranks, create subgroups, and expose convenience attributes for every axis."""
-        raise NotImplementedError("Compute rank metadata and instantiate the distributed subgroups.")
+        raise NotImplementedError(
+            "Compute rank metadata and instantiate the distributed subgroups."  # CPU/MPS NOTE: Use backend="gloo" and guard CUDA-only collectives when running without GPUs.
+        )
 
     def __str__(self):
         """Return a short string describing the world topology for this rank."""

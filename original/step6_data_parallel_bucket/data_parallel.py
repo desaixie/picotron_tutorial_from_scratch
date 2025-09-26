@@ -29,7 +29,7 @@ class DataParallelNaive(nn.Module):
         """Performs an all-reduce operation to synchronize gradients across multiple processes."""
         # No synchronization needed during gradient accumulation, except at the final accumulation step.
         if self.require_backward_grad_sync:
-            dist.all_reduce(grad, op=dist.ReduceOp.SUM, group=pgm.process_group_manager.dp_group)
+            dist.all_reduce(grad, op=dist.ReduceOp.SUM, group=pgm.process_group_manager.dp_group)  # CPU/MPS NOTE: Use backend="gloo" when NCCL is unavailable.
             grad /= pgm.process_group_manager.dp_world_size
         return grad
 
@@ -56,7 +56,7 @@ class Bucket:
         """Launch an asynchronous all-reduce operation to synchronize gradients across processes."""
         assert self.handle is None
         self.grad_data /= self.process_group_size
-        self.handle = dist.all_reduce(self.grad_data, group=self.process_group, async_op=True)
+        self.handle = dist.all_reduce(self.grad_data, group=self.process_group, async_op=True)  # CPU/MPS NOTE: Works with gloo for CPU-only correctness tests.
     
     def reset(self) -> None:
         """Reset the bucket to its initial state. Typically called after the gradient synchronization is finished."""
@@ -133,7 +133,7 @@ class BucketManager:
         
         # Create tensors for storing gradients and initialize Bucket objects.
         for i in range(len(bucket_sizes)):
-            self.grad_data_list.append(torch.zeros(bucket_sizes[i], dtype=self.grad_type, device='cuda'))
+            self.grad_data_list.append(torch.zeros(bucket_sizes[i], dtype=self.grad_type, device='cuda'))  # CPU/MPS NOTE: Allocate bucket tensors on the active device rather than hard-coding cuda.
             self.buckets.append(Bucket(buckets_to_params[i], self.grad_data_list[i], self.process_group))
         
         # Create gradient views for each parameter.

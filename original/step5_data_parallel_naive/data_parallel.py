@@ -28,7 +28,7 @@ class DataParallelNaive(nn.Module):
         """Performs an all-reduce operation to synchronize gradients across multiple processes."""
         # No synchronization needed during gradient accumulation, except at the final accumulation step.
         if self.require_backward_grad_sync:
-            dist.all_reduce(grad, op=dist.ReduceOp.SUM, group=pgm.process_group_manager.dp_group)
+            dist.all_reduce(grad, op=dist.ReduceOp.SUM, group=pgm.process_group_manager.dp_group)  # CPU/MPS NOTE: Use backend="gloo" for CPU-only correctness runs.
             grad /= pgm.process_group_manager.dp_world_size
         return grad
 ### end Data Parallel (naive)

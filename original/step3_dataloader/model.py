@@ -1,22 +1,22 @@
 import torch 
 import torch.nn as nn
 import torch.nn.functional as F
-from flash_attn.flash_attn_interface import flash_attn_func
-from flash_attn.layers.rotary import apply_rotary_emb
-from flash_attn.ops.triton.layer_norm import layer_norm_fn
+from flash_attn.flash_attn_interface import flash_attn_func  # CPU/MPS NOTE: Replace with scaled_dot_product_attention when FlashAttention kernels are unavailable.
+from flash_attn.layers.rotary import apply_rotary_emb  # CPU/MPS NOTE: Use a pure PyTorch rotary helper without FlashAttention.
+from flash_attn.ops.triton.layer_norm import layer_norm_fn  # CPU/MPS NOTE: Swap for torch.nn.LayerNorm or Python RMSNorm on CPU/MPS.
 
 def flash_attention(q, k, v, causal = True):
     q = q.permute(0, 2, 1, 3) # [batch_size, seq_length, num_head , head_dim]
     k = k.permute(0, 2, 1, 3) # [batch_size, seq_length, num_head , head_dim]
     v = v.permute(0, 2, 1, 3) # [batch_size, seq_length, num_head , head_dim]
-    return flash_attn_func(q, k, v, causal=causal)
+    return flash_attn_func(q, k, v, causal=causal)  # CPU/MPS NOTE: Swap for scaled_dot_product_attention if FlashAttention is unavailable.
 
 def get_cos_sin(seq_length, head_dim, base=500000.0):
     assert head_dim%2==0
     # Results on CUDA and CPU are different even with the same formula, To match transformers implementation. frequency should be computed on CPU
     theta = 1.0 / (base ** (torch.arange(0, head_dim, 2, dtype=torch.int64).float().to('cpu') / head_dim))
-    dtype = torch.bfloat16
-    device = torch.device('cuda')
+    dtype = torch.bfloat16  # CPU/MPS NOTE: Prefer torch.float32 when bf16 is unsupported.
+    device = torch.device('cuda')  # CPU/MPS NOTE: Respect the configured device instead of forcing CUDA.
     position = torch.arange(seq_length).to(device).unsqueeze(1).float() # [seq_length, 1]
     # To match transformers implementation. m * theta should be computed on GPU
     theta = theta.to(device)
